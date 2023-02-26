@@ -52,7 +52,7 @@ public class SolverFem
     {
         Initialize();
         AssemblySystem();
-        _matrixAssembler.GlobalMatrix.PrintDense("output/matrixBefore.txt");
+        _matrixAssembler.GlobalMatrix!.PrintDense("output/matrixBefore.txt");
         AccountingDirichletBoundary();
 
         _matrixAssembler.GlobalMatrix.PrintDense("output/matrixAfter.txt");
@@ -104,11 +104,11 @@ public class SolverFem
 
             for (int i = 0; i < _matrixAssembler.BasisSize; i++)
             {
-                _globalVector[element[i]] += _localVector[i];
+                _globalVector[element.Nodes[i]] += _localVector[i];
 
                 for (int j = 0; j < _matrixAssembler.BasisSize; j++)
                 {
-                    _matrixAssembler.FillGlobalMatrix(element[i], element[j], _matrixAssembler.StiffnessMatrix[i, j]);
+                    _matrixAssembler.FillGlobalMatrix(element.Nodes[i], element.Nodes[j], _matrixAssembler.StiffnessMatrix[i, j]);
                 }
             }
         }
@@ -122,7 +122,7 @@ public class SolverFem
         {
             for (int j = 0; j < _matrixAssembler.BasisSize; j++)
             {
-                _localVector[i] += _matrixAssembler.MassMatrix[i, j] * _test.J(_mesh.Points[_mesh.Elements[ielem][j]]);
+                _localVector[i] += _matrixAssembler.MassMatrix[i, j] * _test.J(_mesh.Points[_mesh.Elements[ielem].Nodes[j]]);
             }
         }
     }

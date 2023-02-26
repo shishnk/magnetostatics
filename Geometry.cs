@@ -135,3 +135,12 @@ public readonly record struct Rectangle(Point2D LeftBottom, Point2D RightTop)
     public Point2D LeftTop { get; } = new(LeftBottom.X, RightTop.Y);
     public Point2D RightBottom { get; } = new(RightTop.X, LeftBottom.Y);
 }
+
+public class FiniteElement
+{
+    public IReadOnlyList<int> Nodes { get; }
+    public int AreaNumber { get; }
+
+    public FiniteElement(IReadOnlyList<int> nodes, int areaNumber)
+        => (Nodes, AreaNumber) = (nodes, areaNumber);
+}

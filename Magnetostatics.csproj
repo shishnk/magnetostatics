@@ -28,6 +28,12 @@
       <None Update="input\meshParameters">
         <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       </None>
+      <None Update="output\elements.txt">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </None>
+      <None Update="output\points.txt">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </None>
     </ItemGroup>
 
 </Project>

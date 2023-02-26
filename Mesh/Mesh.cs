@@ -30,33 +30,55 @@ public abstract class MeshBuilder
 
         for (int i = 0; i < parameters.LinesX.Length - 1; i++)
         {
-            var hx = (parameters.LinesX[i + 1] - parameters.LinesX[i]) / parameters.SplitsX[i];
+            var sum = 0.0;
+            var sign = Math.Sign(parameters.Kx[i]);
 
-            for (int j = 0, k = i * parameters.SplitsX[i] + 1; j < parameters.SplitsX[i]; j++, k++)
+            for (int k = 0; k < parameters.SplitsX[i]; k++)
+            {
+                sum += Math.Pow(sign * parameters.Kx[i], sign * k);
+            }
+
+            var hx = (parameters.LinesX[i + 1] - parameters.LinesX[i]) / sum;
+
+            for (int j = 0, k = idx; j < parameters.SplitsX[i] - 1; j++, k++)
             {
                 pointsX[idx++] = pointsX[k - 1] + hx;
+                hx = sign == 1 ? hx * parameters.Kx[i] : hx / (sign * parameters.Kx[i]);
             }
+
+            pointsX[idx++] = parameters.LinesX[i + 1];
         }
 
         idx = 1;
 
         for (int i = 0; i < parameters.LinesY.Length - 1; i++)
         {
-            var hy = (parameters.LinesY[i + 1] - parameters.LinesY[i]) / parameters.SplitsY[i];
+            var sum = 0.0;
+            var sign = Math.Sign(parameters.Ky[i]);
 
-            for (int j = 0, k = i * parameters.SplitsX[i] + 1; j < parameters.SplitsY[i]; j++, k++)
+            for (int k = 0; k < parameters.SplitsY[i]; k++)
+            {
+                sum += Math.Pow(sign * parameters.Ky[i], sign * k);
+            }
+
+            var hy = (parameters.LinesY[i + 1] - parameters.LinesY[i]) / sum;
+
+            for (int j = 0, k = idx; j < parameters.SplitsY[i] - 1; j++, k++)
             {
                 pointsY[idx++] = pointsY[k - 1] + hy;
+                hy = sign == 1 ? hy * parameters.Ky[i] : hy / (sign * parameters.Ky[i]);
             }
+
+            pointsY[idx++] = parameters.LinesY[i + 1];
         }
 
         idx = 0;
 
-        for (int j = 0; j < pointsX.Length; j++)
+        foreach (var y in pointsY)
         {
-            for (int i = 0; i < pointsY.Length; i++)
+            foreach (var x in pointsX)
             {
-                result.Points[idx++] = new(pointsX[i], pointsY[j]);
+                result.Points[idx++] = new(x, y);
             }
         }
 
@@ -76,6 +98,23 @@ public abstract class MeshBuilder
 
                 result.Elements[idx++] = new(nodes.ToArray(), FindNumberArea(result.Points, nodes, parameters));
             }
+        }
+
+        using StreamWriter sw1 = new("output/elements.txt"), sw2 = new("output/points.txt");
+
+        foreach (var element in result.Elements)
+        {
+            foreach (var node in element.Nodes)
+            {
+                sw1.Write(node + " ");
+            }
+
+            sw1.WriteLine();
+        }
+
+        foreach (var point in result.Points)
+        {
+            sw2.WriteLine($"{point.X} {point.Y}");
         }
 
         return (result.Points, result.Elements);

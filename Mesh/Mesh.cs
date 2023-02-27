@@ -4,6 +4,7 @@ public interface IBaseMesh
 {
     IReadOnlyList<Point2D> Points { get; }
     IReadOnlyList<FiniteElement> Elements { get; }
+    IReadOnlyList<Area> Areas { get; }
 }
 
 public abstract class MeshBuilder
@@ -247,7 +248,7 @@ public class MeshParameters
         if (Nesting.Item1 > 2 || Nesting.Item2 > 2 || Nesting.Item1 < 0 || Nesting.Item2 < 0)
         {
             // maybe TODO any number of nesting mesh
-            throw new ArgumentException("Nesting parameters should be from 0 to 2!", nameof(Nesting));
+            throw new("Nesting parameters should be from 0 to 2!");
         }
 
         if (!expectedResult.SequenceEqual(Areas)) throw new("Area numbers must be sorted by ascending!");

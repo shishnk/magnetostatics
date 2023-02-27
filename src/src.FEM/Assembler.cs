@@ -110,7 +110,8 @@ public class BiMatrixAssembler : BaseMatrixAssembler
             for (int j = 0; j <= i; j++)
             {
                 StiffnessMatrix[i, j] = StiffnessMatrix[j, i] =
-                    hy / hx * _baseStiffnessMatrix[0][i, j] + hx / hy * _baseStiffnessMatrix[1][i, j];
+                    1.0 / _mesh.Areas[element.AreaNumber].Permeability * (hy / hx * _baseStiffnessMatrix[0][i, j] +
+                                                                          hx / hy * _baseStiffnessMatrix[1][i, j]);
             }
         }
 

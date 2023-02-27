@@ -16,9 +16,13 @@ public class DirichletBoundary : IBoundary
 
 public readonly record struct BoundaryParameters
 {
+    [JsonProperty("Left border"), JsonRequired]
     public required byte LeftBorder { get; init; }
+    [JsonProperty("Right border"), JsonRequired]
     public required byte RightBorder { get; init; }
+    [JsonProperty("Bottom border"), JsonRequired]
     public required byte BottomBorder { get; init; }
+    [JsonProperty("Top border"), JsonRequired]
     public required byte TopBorder { get; init; }
 
     public static BoundaryParameters ReadJson(string jsonPath)

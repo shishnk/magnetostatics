@@ -9,6 +9,7 @@
     
     <ItemGroup>
         <Using Include="Magnetostatics" />
+        <Using Include="Magnetostatics.src.FEM" />
         <Using Include="Magnetostatics.Mesh" />
         <Using Include="Magnetostatics.Tests" />
         <Using Include="Newtonsoft.Json" />
@@ -32,6 +33,9 @@
         <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       </None>
       <None Update="output\points.txt">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </None>
+      <None Update="input\boundaryParameters.json">
         <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       </None>
     </ItemGroup>

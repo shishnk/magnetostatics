@@ -109,6 +109,7 @@ public abstract class MeshBuilder
                 sw1.Write(node + " ");
             }
 
+            sw1.Write(element.AreaNumber);
             sw1.WriteLine();
         }
 
@@ -124,7 +125,7 @@ public abstract class MeshBuilder
     {
         var localPoints = nodes.Select(node => points[node]).ToArray();
 
-        foreach (var area in from area in parameters.Areas
+        foreach (var area in from area in parameters.Areas.OrderByDescending(area => area.Number)
                  let massCenter = new Point2D(localPoints.Sum(p => p.X) / 4.0, localPoints.Sum(p => p.Y) / 4.0)
                  where massCenter.X >= parameters.LinesX[area.X1] && massCenter.X <= parameters.LinesX[area.X2] &&
                        massCenter.Y >= parameters.LinesY[area.Y1] && massCenter.Y <= parameters.LinesY[area.Y2]
@@ -191,25 +192,30 @@ public readonly record struct Area(int Number, double Permeability, double Curre
 
 public class MeshParameters
 {
+    private int[] _splitsX;
+    private int[] _splitsY;
+    private double[] _kx;
+    private double[] _ky;
+
     public ImmutableArray<double> LinesX { get; init; }
     public ImmutableArray<double> LinesY { get; init; }
-    public ImmutableArray<int> SplitsX { get; init; }
-    public ImmutableArray<int> SplitsY { get; init; }
-    public ImmutableArray<int> Kx { get; init; }
-    public ImmutableArray<int> Ky { get; init; }
+    public ImmutableArray<int> SplitsX => _splitsX.ToImmutableArray();
+    public ImmutableArray<int> SplitsY => _splitsY.ToImmutableArray();
+    public ImmutableArray<double> Kx => _kx.ToImmutableArray();
+    public ImmutableArray<double> Ky => _ky.ToImmutableArray();
     public (int, int) Nesting { get; init; }
     public ImmutableArray<Area> Areas { get; init; }
 
     public MeshParameters(IEnumerable<double> linesX, IEnumerable<double> linesY, IEnumerable<int> splitsX,
-        IEnumerable<int> splitsY, IEnumerable<int> kx, IEnumerable<int> ky, (int, int) nesting,
+        IEnumerable<int> splitsY, IEnumerable<double> kx, IEnumerable<double> ky, (int, int) nesting,
         IEnumerable<Area> areas)
     {
         LinesX = linesX.ToImmutableArray();
         LinesY = linesY.ToImmutableArray();
-        SplitsX = splitsX.ToImmutableArray();
-        SplitsY = splitsY.ToImmutableArray();
-        Kx = kx.ToImmutableArray();
-        Ky = ky.ToImmutableArray();
+        _splitsX = splitsX.ToArray();
+        _splitsY = splitsY.ToArray();
+        _kx = kx.ToArray();
+        _ky = ky.ToArray();
         Nesting = nesting;
         Areas = areas.ToImmutableArray();
     }
@@ -217,20 +223,52 @@ public class MeshParameters
 
     public MeshParameters(string path)
     {
-        if (!File.Exists(path))
-        {
-            throw new("File does not exist");
-        }
+        if (!File.Exists(path)) throw new("File does not exist");
 
         using var sr = new StreamReader(path);
-        LinesX = sr.ReadLine()!.Split().Select(double.Parse).ToImmutableArray();
-        LinesY = sr.ReadLine()!.Split().Select(double.Parse).ToImmutableArray();
-        SplitsX = sr.ReadLine()!.Split().Select(int.Parse).ToImmutableArray();
-        SplitsY = sr.ReadLine()!.Split().Select(int.Parse).ToImmutableArray();
-        Kx = sr.ReadLine()!.Split().Select(int.Parse).ToImmutableArray();
-        Ky = sr.ReadLine()!.Split().Select(int.Parse).ToImmutableArray();
-        var line = sr.ReadLine()!.Split();
+        LinesX = sr.ReadLine()!.Split().Where(line => !string.IsNullOrWhiteSpace(line)).Select(double.Parse)
+            .ToImmutableArray();
+        LinesY = sr.ReadLine()!.Split().Where(line => !string.IsNullOrWhiteSpace(line)).Select(double.Parse)
+            .ToImmutableArray();
+        _splitsX = sr.ReadLine()!.Split().Where(line => !string.IsNullOrWhiteSpace(line)).Select(int.Parse)
+            .ToArray();
+        _splitsY = sr.ReadLine()!.Split().Where(line => !string.IsNullOrWhiteSpace(line)).Select(int.Parse)
+            .ToArray();
+        _kx = sr.ReadLine()!.Split().Where(line => !string.IsNullOrWhiteSpace(line)).Select(double.Parse)
+            .ToArray();
+        _ky = sr.ReadLine()!.Split().Where(line => !string.IsNullOrWhiteSpace(line)).Select(double.Parse)
+            .ToArray();
+        var line = sr.ReadLine()!.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
         Nesting = (int.Parse(line[0]), int.Parse(line[1]));
         Areas = sr.ReadToEnd().Split("\n").Select(Area.Parse).ToImmutableArray();
+
+        var expectedResult = Areas.OrderBy(area => area.Number);
+
+        if (Nesting.Item1 > 2 || Nesting.Item2 > 2 || Nesting.Item1 < 0 || Nesting.Item2 < 0)
+        {
+            // maybe TODO any number of nesting mesh
+            throw new ArgumentException("Nesting parameters should be from 0 to 2!", nameof(Nesting));
+        }
+
+        if (!expectedResult.SequenceEqual(Areas)) throw new("Area numbers must be sorted by ascending!");
+        if (Nesting.Item1 != 0 || Nesting.Item2 != 0) RecalculateParameters();
+    }
+
+    private void RecalculateParameters()
+    {
+        _splitsX = _splitsX.Select(x => Nesting.Item1 == 1 ? x * 2 : x * 4).ToArray();
+        _splitsY = _splitsY.Select(y => Nesting.Item1 == 1 ? y * 2 : y * 4).ToArray();
+        _kx = _kx.Select(k =>
+            {
+                var sign = Math.Sign(k);
+                return Nesting.Item1 == 1 ? sign * Math.Sqrt(sign * k) : sign * Math.Sqrt(Math.Sqrt(sign * k));
+            })
+            .ToArray();
+        _ky = _ky.Select(k =>
+            {
+                var sign = Math.Sign(k);
+                return Nesting.Item1 == 1 ? sign * Math.Sqrt(sign * k) : sign * Math.Sqrt(Math.Sqrt(sign * k));
+            })
+            .ToArray();
     }
 }

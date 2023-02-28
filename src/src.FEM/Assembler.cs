@@ -1,29 +1,25 @@
 ﻿namespace Magnetostatics.src.FEM;
 
-using Spline;
-
 public abstract class BaseMatrixAssembler
 {
     protected readonly IBaseMesh _mesh;
     protected readonly Integration _integrator;
     protected Matrix[]? _baseStiffnessMatrix;
     protected Matrix? _baseMassMatrix;
-    protected Spline? _spline;
+    protected double? _mu;
 
     public SparseMatrix? GlobalMatrix { get; set; } // need initialize with portrait builder 
     public Matrix StiffnessMatrix { get; }
     public Matrix MassMatrix { get; }
     public IBasis2D Basis { get; }
 
-    protected BaseMatrixAssembler(IBasis2D basis, Integration integrator, IBaseMesh mesh, Spline? spline = null)
+    protected BaseMatrixAssembler(IBasis2D basis, Integration integrator, IBaseMesh mesh)
     {
         Basis = basis;
         _integrator = integrator;
         _mesh = mesh;
         StiffnessMatrix = new(basis.Size);
         MassMatrix = new(basis.Size);
-        _spline = spline;
-        _spline?.Compute();
     }
 
     public abstract void BuildLocalMatrices(int ielem);
@@ -53,8 +49,7 @@ public abstract class BaseMatrixAssembler
 
 public class BiMatrixAssembler : BaseMatrixAssembler
 {
-    public BiMatrixAssembler(IBasis2D basis, Integration integrator, IBaseMesh mesh, Spline? spline = null) : base(
-        basis, integrator, mesh, spline)
+    public BiMatrixAssembler(IBasis2D basis, Integration integrator, IBaseMesh mesh) : base(basis, integrator, mesh)
     {
     }
 
@@ -110,7 +105,7 @@ public class BiMatrixAssembler : BaseMatrixAssembler
             }
         }
 
-        var mu = _mesh.Areas.First(area => area.Number == _mesh.Elements[ielem].AreaNumber).Permeability;
+        var mu = _mu ?? _mesh.Areas.First(area => area.Number == _mesh.Elements[ielem].AreaNumber).Permeability;
 
         for (int i = 0; i < Basis.Size; i++)
         {
@@ -122,6 +117,8 @@ public class BiMatrixAssembler : BaseMatrixAssembler
             }
         }
 
+        _mu = null;
+
         for (int i = 0; i < Basis.Size; i++)
         {
             for (int j = 0; j <= i; j++)
@@ -130,4 +127,6 @@ public class BiMatrixAssembler : BaseMatrixAssembler
             }
         }
     }
+
+    public void ReceivePermeability(object? sender, double value) => _mu = value;
 }

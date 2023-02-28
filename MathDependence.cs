@@ -7,7 +7,7 @@ public class MathDependence
     public (double Function, double Argument)[]? Data { get; private set; }
 
     public MathDependence(string argument, string function)
-        => (Argument, Function) = (argument, function);
+        => (Function, Argument) = (argument, function);
 
     public void LoadData(string path)
     {

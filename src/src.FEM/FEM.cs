@@ -1,5 +1,7 @@
 ﻿namespace Magnetostatics.src.FEM;
 
+using Spline;
+
 public class SolverFem
 {
     public class SolverFemBuilder
@@ -42,9 +44,22 @@ public class SolverFem
             return this;
         }
 
+        public SolverFemBuilder SetNonLinearParameters((double Residual, int MaxIters) nonLinearParameters)
+        {
+            _solverFem._nonLinearParameters = nonLinearParameters;
+            return this;
+        }
+
+        public SolverFemBuilder SetSpline(Spline spline)
+        {
+            _solverFem._spline = spline;
+            return this;
+        }
+
         public static implicit operator SolverFem(SolverFemBuilder builder)
             => builder._solverFem;
     }
+
 
     private IBaseMesh _mesh = default!;
     private ITest _test = default!;
@@ -53,26 +68,37 @@ public class SolverFem
     private Vector<double> _localVector = default!;
     private Vector<double> _globalVector = default!;
     private BaseMatrixAssembler _matrixAssembler = default!;
-    private MathDependence _dependence = default!;
+    private MathDependence? _dependence;
+    private (double Residual, int MaxIters)? _nonLinearParameters;
+    private Spline? _spline;
+    private bool _isInit;
+
+    public event EventHandler<double>? Received;
 
     public void Compute()
     {
         Initialize();
-        AssemblySystem();
-        _matrixAssembler.GlobalMatrix!.PrintDense("output/matrixBefore.txt");
-        AccountingDirichletBoundary();
 
-        _matrixAssembler.GlobalMatrix.PrintDense("output/matrixAfter.txt");
+        var iters = _nonLinearParameters?.MaxIters ?? 1;
 
-        _iterativeSolver.SetMatrix(_matrixAssembler.GlobalMatrix!);
-        _iterativeSolver.SetVector(_globalVector);
-        _iterativeSolver.Compute();
+        for (int i = 0; i < iters; i++)
+        {
+            if (i == 0 && _dependence is not null) OnReceived(_dependence.Data![0].Function);
 
-        // foreach (var (value, idx) in _iterativeSolver.Solution!.Value
-        //              .Select((value, idx) => (value, idx)))
-        // {
-        //     Console.WriteLine($"{idx})---{value}");
-        // }
+            AssemblySystem();
+            AccountingDirichletBoundary();
+
+            _iterativeSolver.SetMatrix(_matrixAssembler.GlobalMatrix!);
+            _iterativeSolver.SetVector(_globalVector);
+            _iterativeSolver.Compute();
+
+            var q = new Vector<double>(_iterativeSolver.Solution!.Value.Length) { _iterativeSolver.Solution.Value };
+
+            if ((_matrixAssembler.GlobalMatrix! * q - _globalVector).Norm() / _globalVector.Norm() <
+                _nonLinearParameters?.Residual) break;
+
+            _isInit = true;
+        }
 
         using var sw = new StreamWriter("output/q.txt");
 
@@ -80,29 +106,14 @@ public class SolverFem
         {
             sw.WriteLine(value);
         }
-
-        // var exact = new double[_mesh.Points.Count];
-        //
-        // for (int i = 0; i < exact.Length; i++)
-        // {
-        //     exact[i] = _test.Az(_mesh.Points[i]);
-        // }
-        //
-        // var result = exact.Zip(_iterativeSolver.Solution!.Value, (v1, v2) => (v2, v1));
-        //
-        // foreach (var (v1, v2) in result)
-        // {
-        //     Console.WriteLine($"{v1} ------------ {v2} ");
-        // }
-        //
-        // Console.WriteLine("---------------------------");
-
-        // CalculateError();
     }
+
+    protected virtual void OnReceived(double value) => Received?.Invoke(this, value);
 
     private void Initialize()
     {
         PortraitBuilder.Build(_mesh, out var ig, out var jg);
+        _spline?.Compute();
         _matrixAssembler.GlobalMatrix = new(ig.Length - 1, jg.Length)
         {
             Ig = ig,
@@ -118,6 +129,22 @@ public class SolverFem
         for (int ielem = 0; ielem < _mesh.Elements.Count; ielem++)
         {
             var element = _mesh.Elements[ielem];
+
+            if (_nonLinearParameters.HasValue && _isInit)
+            {
+                var localPoints = _mesh.Elements[ielem].Nodes.Select(node => _mesh.Points[node]).ToArray();
+                var massCenter = new Point2D(localPoints.Sum(p => p.X) / 4.0, localPoints.Sum(p => p.Y) / 4.0);
+                var module = CalculateBAtPoint(massCenter);
+                var mu = _spline!.ValueAtPoint(module);
+                var lastDependenceValue = _dependence!.Data!.Last();
+
+                if (module > lastDependenceValue.Argument)
+                {
+                    mu = 1.0 / (lastDependenceValue.Argument / module * (1.0 / lastDependenceValue.Function - 1.0) + 1.0);
+                    OnReceived(mu);
+                }
+                else OnReceived(mu);
+            }
 
             _matrixAssembler.BuildLocalMatrices(ielem);
             BuildLocalVector(ielem);

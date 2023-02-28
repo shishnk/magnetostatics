@@ -50,6 +50,7 @@ public class Spline
     private (double Alpha, double Beta) _parameters;
     private int _partitions;
 
+    public IReadOnlyList<Point2D> InitialPoints => _points;
     public IReadOnlyList<Point2D> Result => _result;
 
     private void Init()
@@ -81,8 +82,8 @@ public class Spline
 
     public void Compute()
     {
-        Init();
         BuildMesh();
+        Init();
         AssemblyMatrix();
         //_matrix.PrintDense("_matrix.txt");
         _matrix.LU();

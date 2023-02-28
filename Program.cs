@@ -11,12 +11,17 @@ Spline spline = Spline.CreateBuilder()
     .SetParameters((1E-07, 1E-07))
     .SetPartitions(100)
     .SetPoints(muB.Data!.Select(data => new Point2D(data.Argument, data.Function)).ToArray());
+var assembler = new BiMatrixAssembler(new LinearBasis(), integrator, mesh);
 SolverFem problem = SolverFem.CreateBuilder()
     .SetMesh(mesh)
-    // .SetTest(new Test1())
     .SetSolverSlae(new CGMCholesky(1000, 1E-15))
-    .SetAssembler(new BiMatrixAssembler(new LinearBasis(), integrator, mesh, spline))
+    .SetAssembler(assembler)
+    .SetDependence(muB)
+    .SetNonLinearParameters((1E-14, 1000))
+    .SetSpline(spline)
     .SetBoundaries(boundaryHandler.Process());
+
+problem.Received += assembler.ReceivePermeability;
 
 problem.Compute();
 

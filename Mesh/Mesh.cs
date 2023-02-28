@@ -126,7 +126,7 @@ public abstract class MeshBuilder
     {
         var localPoints = nodes.Select(node => points[node]).ToArray();
 
-        foreach (var area in from area in parameters.Areas.OrderByDescending(area => area.Number)
+        foreach (var area in from area in parameters.Areas
                  let massCenter = new Point2D(localPoints.Sum(p => p.X) / 4.0, localPoints.Sum(p => p.Y) / 4.0)
                  where massCenter.X >= parameters.LinesX[area.X1] && massCenter.X <= parameters.LinesX[area.X2] &&
                        massCenter.Y >= parameters.LinesY[area.Y1] && massCenter.Y <= parameters.LinesY[area.Y2]
@@ -161,7 +161,7 @@ public class SuperMesh : IBaseMesh
 
 public readonly record struct Area(int Number, double Permeability, double Current, int X1, int X2, int Y1, int Y2)
 {
-    private const double VacuumPermeability = 4.0 * Math.PI * 10E-07;
+    private const double VacuumPermeability = 4.0 * Math.PI * 1E-07;
 
     public static Area Parse(string line)
     {
@@ -193,6 +193,7 @@ public readonly record struct Area(int Number, double Permeability, double Curre
 
 public class MeshParameters
 {
+    private readonly Area[] _areas;
     private int[] _splitsX;
     private int[] _splitsY;
     private double[] _kx;
@@ -205,7 +206,7 @@ public class MeshParameters
     public ImmutableArray<double> Kx => _kx.ToImmutableArray();
     public ImmutableArray<double> Ky => _ky.ToImmutableArray();
     public (int, int) Nesting { get; init; }
-    public ImmutableArray<Area> Areas { get; init; }
+    public ImmutableArray<Area> Areas => _areas.ToImmutableArray();
 
     public MeshParameters(IEnumerable<double> linesX, IEnumerable<double> linesY, IEnumerable<int> splitsX,
         IEnumerable<int> splitsY, IEnumerable<double> kx, IEnumerable<double> ky, (int, int) nesting,
@@ -218,7 +219,7 @@ public class MeshParameters
         _kx = kx.ToArray();
         _ky = ky.ToArray();
         Nesting = nesting;
-        Areas = areas.ToImmutableArray();
+        _areas = areas.ToArray();
     }
 
 
@@ -241,7 +242,7 @@ public class MeshParameters
             .ToArray();
         var line = sr.ReadLine()!.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
         Nesting = (int.Parse(line[0]), int.Parse(line[1]));
-        Areas = sr.ReadToEnd().Split("\n").Select(Area.Parse).ToImmutableArray();
+        _areas = sr.ReadToEnd().Split("\n").Select(Area.Parse).ToArray();
 
         var expectedResult = Areas.OrderBy(area => area.Number);
 
@@ -252,6 +253,9 @@ public class MeshParameters
         }
 
         if (!expectedResult.SequenceEqual(Areas)) throw new("Area numbers must be sorted by ascending!");
+
+        _areas = _areas.OrderByDescending(area => area.Number).ToArray();
+
         if (Nesting.Item1 != 0 || Nesting.Item2 != 0) RecalculateParameters();
     }
 

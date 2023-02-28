@@ -1,25 +1,29 @@
 ﻿namespace Magnetostatics.src.FEM;
 
+using Spline;
+
 public abstract class BaseMatrixAssembler
 {
-    protected readonly IBasis2D _basis;
     protected readonly IBaseMesh _mesh;
     protected readonly Integration _integrator;
     protected Matrix[]? _baseStiffnessMatrix;
     protected Matrix? _baseMassMatrix;
+    protected Spline? _spline;
 
     public SparseMatrix? GlobalMatrix { get; set; } // need initialize with portrait builder 
     public Matrix StiffnessMatrix { get; }
     public Matrix MassMatrix { get; }
-    public int BasisSize => _basis.Size;
+    public IBasis2D Basis { get; }
 
-    protected BaseMatrixAssembler(IBasis2D basis, Integration integrator, IBaseMesh mesh)
+    protected BaseMatrixAssembler(IBasis2D basis, Integration integrator, IBaseMesh mesh, Spline? spline = null)
     {
-        _basis = basis;
+        Basis = basis;
         _integrator = integrator;
         _mesh = mesh;
-        StiffnessMatrix = new(_basis.Size);
-        MassMatrix = new(_basis.Size);
+        StiffnessMatrix = new(basis.Size);
+        MassMatrix = new(basis.Size);
+        _spline = spline;
+        _spline?.Compute();
     }
 
     public abstract void BuildLocalMatrices(int ielem);
@@ -49,7 +53,8 @@ public abstract class BaseMatrixAssembler
 
 public class BiMatrixAssembler : BaseMatrixAssembler
 {
-    public BiMatrixAssembler(IBasis2D basis, Integration integrator, IBaseMesh mesh) : base(basis, integrator, mesh)
+    public BiMatrixAssembler(IBasis2D basis, Integration integrator, IBaseMesh mesh, Spline? spline = null) : base(
+        basis, integrator, mesh, spline)
     {
     }
 
@@ -64,11 +69,11 @@ public class BiMatrixAssembler : BaseMatrixAssembler
 
         if (_baseStiffnessMatrix is null)
         {
-            _baseStiffnessMatrix = new Matrix[] { new(_basis.Size), new(_basis.Size) };
-            _baseMassMatrix = new(_basis.Size);
+            _baseStiffnessMatrix = new Matrix[] { new(Basis.Size), new(Basis.Size) };
+            _baseMassMatrix = new(Basis.Size);
             var templateElement = new Rectangle(new(0.0, 0.0), new(1.0, 1.0));
 
-            for (int i = 0; i < _basis.Size; i++)
+            for (int i = 0; i < Basis.Size; i++)
             {
                 for (int j = 0; j <= i; j++)
                 {
@@ -81,8 +86,8 @@ public class BiMatrixAssembler : BaseMatrixAssembler
                         var k1 = k;
                         function = p =>
                         {
-                            var dFi1 = _basis.GetDPsi(ik, k1, p);
-                            var dFi2 = _basis.GetDPsi(jk, k1, p);
+                            var dFi1 = Basis.GetDPsi(ik, k1, p);
+                            var dFi2 = Basis.GetDPsi(jk, k1, p);
 
                             return dFi1 * dFi2;
                         };
@@ -95,8 +100,8 @@ public class BiMatrixAssembler : BaseMatrixAssembler
                     var j1 = j;
                     function = p =>
                     {
-                        var fi1 = _basis.GetPsi(i1, p);
-                        var fi2 = _basis.GetPsi(j1, p);
+                        var fi1 = Basis.GetPsi(i1, p);
+                        var fi2 = Basis.GetPsi(j1, p);
 
                         return fi1 * fi2;
                     };
@@ -107,7 +112,7 @@ public class BiMatrixAssembler : BaseMatrixAssembler
 
         var mu = _mesh.Areas.First(area => area.Number == _mesh.Elements[ielem].AreaNumber).Permeability;
 
-        for (int i = 0; i < _basis.Size; i++)
+        for (int i = 0; i < Basis.Size; i++)
         {
             for (int j = 0; j <= i; j++)
             {
@@ -117,7 +122,7 @@ public class BiMatrixAssembler : BaseMatrixAssembler
             }
         }
 
-        for (int i = 0; i < _basis.Size; i++)
+        for (int i = 0; i < Basis.Size; i++)
         {
             for (int j = 0; j <= i; j++)
             {

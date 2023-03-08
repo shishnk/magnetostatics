@@ -9,7 +9,7 @@ Spline spline = Spline.CreateBuilder()
     .SetBasis(new HermiteBasis())
     .SetIntegrator(integrator)
     .SetParameters((1E-07, 1E-07))
-    .SetPartitions(100)
+    .SetPartitions(200)
     .SetPoints(muB.Data!.Select(data => new Point2D(data.Argument, data.Function)).ToArray());
 var assembler = new BiMatrixAssembler(new LinearBasis(), integrator, mesh);
 SolverFem problem = SolverFem.CreateBuilder()
@@ -17,7 +17,7 @@ SolverFem problem = SolverFem.CreateBuilder()
     .SetSolverSlae(new CGMCholesky(1000, 1E-15))
     .SetAssembler(assembler)
     .SetDependence(muB)
-    .SetNonLinearParameters((1E-14, 1000))
+    .SetNonLinearParameters((1E-11, 10))
     .SetSpline(spline)
     .SetBoundaries(boundaryHandler.Process());
 
@@ -25,5 +25,8 @@ problem.Received += assembler.ReceivePermeability;
 
 problem.Compute();
 
-problem.CalculateAzAtPoint(new(-0.017, 0.022));
-problem.CalculateBAtPoint(new(-0.017, 0.022));
+problem.CalculateBAtPoint((-.0078, 0.0016));
+problem.CalculateBAtPoint((-.0037, 0.0017));
+problem.CalculateBAtPoint((-.0013, 0.0019));
+problem.CalculateBAtPoint((.004, 0.0015));
+problem.CalculateBAtPoint((.0087, 0.0013));

@@ -55,6 +55,8 @@ public readonly record struct Point2D(double X, double Y)
     public static Point2D operator +(Point2D p, (double, double) value) => new(p.X + value.Item1, p.Y + value.Item2);
 
     public static Point2D operator -(Point2D p, (double, double) value) => new(p.X - value.Item1, p.Y - value.Item2);
+
+    public static implicit operator Point2D((double, double) value) => new(value.Item1, value.Item2);
 }
 
 public class IntervalJsonConverter : JsonConverter

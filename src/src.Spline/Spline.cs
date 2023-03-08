@@ -85,25 +85,26 @@ public class Spline
         BuildMesh();
         Init();
         AssemblyMatrix();
-        //_matrix.PrintDense("_matrix.txt");
         _matrix.LU();
         _vector = SLAE.Compute(_matrix, _vector);
         ValuesAtPoints();
     }
 
-    public double ValueAtPoint(double x)
+    public double ValueAtPoint(double point)
     {
         int ielem = -1;
         double result = 0.0;
 
         for (int i = 0; i < _elements.Length; i++)
         {
-            if (!_elements[i].IsContain(x)) continue;
+            if (!_elements[i].IsContain(point)) continue;
             ielem = i;
             break;
         }
 
         if (ielem == -1) throw new("Not supported exception!");
+
+        double x = (point - _elements[ielem].LeftBorder) / _elements[ielem].Length;
 
         for (int i = 0; i < _basis.Size; i++)
         {
@@ -179,7 +180,7 @@ public class Spline
 
                 _result.Add(changedPoint with { Y = sum });
 
-                changedPoint += (0.2, 0.0);
+                changedPoint += (0.0005, 0.0);
                 sum = 0.0;
             } while (_elements[ielem].IsContain(changedPoint.X));
         }

@@ -6,8 +6,8 @@ public class MathDependence
     public string Function { get; }
     public (double Function, double Argument)[]? Data { get; private set; }
 
-    public MathDependence(string argument, string function)
-        => (Function, Argument) = (argument, function);
+    public MathDependence(string function, string argument)
+        => (Function, Argument) = (function, argument);
 
     public void LoadData(string path)
     {
@@ -19,5 +19,5 @@ public class MathDependence
             .Select(line => (double.Parse(line[0]), double.Parse(line[1]))).ToArray();
     }
 
-    public override string ToString() => $"Dependence {Function}({Argument})";
+    public override string ToString() => $"Dependence is {Function}({Argument})";
 }

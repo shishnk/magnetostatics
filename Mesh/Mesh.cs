@@ -11,9 +11,9 @@ public abstract class MeshBuilder
 {
     protected abstract int ElementSize { get; }
 
-    public abstract (IEnumerable<Point2D>, FiniteElement[]) Build(MeshParameters meshParameters);
+    public abstract (IReadOnlyList<Point2D>, FiniteElement[]) Build(MeshParameters meshParameters);
 
-    protected (IEnumerable<Point2D>, FiniteElement[]) BaseBuild(MeshParameters parameters)
+    protected (IReadOnlyList<Point2D>, FiniteElement[]) BaseBuild(MeshParameters parameters)
     {
         var result = new
         {
@@ -97,7 +97,7 @@ public abstract class MeshBuilder
                 nodes[2] = i + (j + 1) * nx;
                 nodes[3] = i + 1 + (j + 1) * nx;
 
-                result.Elements[idx++] = new(nodes.ToArray(), FindNumberArea(result.Points, nodes, parameters));
+                result.Elements[idx++] = new(nodes.ToArray(), FindAreaNumber(result.Points, nodes, parameters));
             }
         }
 
@@ -122,7 +122,7 @@ public abstract class MeshBuilder
         return (result.Points, result.Elements);
     }
 
-    protected static int FindNumberArea(Point2D[] points, IEnumerable<int> nodes, MeshParameters parameters)
+    protected static int FindAreaNumber(Point2D[] points, IEnumerable<int> nodes, MeshParameters parameters)
     {
         var localPoints = nodes.Select(node => points[node]).ToArray();
 
@@ -143,20 +143,17 @@ public class LinearMeshBuilder : MeshBuilder
 {
     protected override int ElementSize => 4;
 
-    public override (IEnumerable<Point2D>, FiniteElement[]) Build(MeshParameters parameters) => BaseBuild(parameters);
+    public override (IReadOnlyList<Point2D>, FiniteElement[]) Build(MeshParameters parameters) => BaseBuild(parameters);
 }
 
 public class SuperMesh : IBaseMesh
 {
-    private readonly IEnumerable<Point2D> _points;
-    private readonly FiniteElement[] _elements;
-
-    public IReadOnlyList<Point2D> Points => _points.ToList().AsReadOnly();
-    public IReadOnlyList<FiniteElement> Elements => _elements;
+    public IReadOnlyList<Point2D> Points { get; }
+    public IReadOnlyList<FiniteElement> Elements { get; }
     public IReadOnlyList<Area> Areas { get; }
 
     public SuperMesh(MeshParameters parameters, MeshBuilder meshBuilder)
-        => ((_points, _elements), Areas) = (meshBuilder.Build(parameters), parameters.Areas);
+        => ((Points, Elements), Areas) = (meshBuilder.Build(parameters), parameters.Areas);
 }
 
 public readonly record struct Area(int Number, double Permeability, double Current, int X1, int X2, int Y1, int Y2)

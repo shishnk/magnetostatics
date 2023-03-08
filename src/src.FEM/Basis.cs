@@ -38,9 +38,9 @@ public class HermiteBasis : IBasis1D
         => number switch
         {
             0 => -6.0 * (point - point * point) / h, // $\dfrac{-6 \cdot (\xi - \xi^2)}{h_i}$
-            1 => 1.0 - 4 * point + 3 * point * point, // $1 - 4\xi + 3\xi^2$
+            1 => 1.0 - 4.0 * point + 3.0 * point * point, // $1 - 4\xi + 3\xi^2$
             2 => 6.0 * (point - point * point) / h, // $\dfrac{6 \cdot (\xi - \xi^2)}{h_i}$
-            3 => -2.0 * point + 3 * point * point, // $-2\xi + 3\xi^2$
+            3 => -2.0 * point + 3.0 * point * point, // $-2\xi + 3\xi^2$
             _ => throw new ArgumentOutOfRangeException(nameof(number), number, "Not expected function number!")
         };
 

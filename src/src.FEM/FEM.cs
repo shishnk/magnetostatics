@@ -105,8 +105,7 @@ public sealed class SolverFem
 
             Console.WriteLine(residual);
 
-            if (residual < _nonLinearParameters?.Residual)
-                break;
+            if (residual < _nonLinearParameters?.Residual) break;
 
             qk.Fill(0.0);
         }
@@ -176,7 +175,7 @@ public sealed class SolverFem
                 else
                 {
                     OnReceived(_spline!.ValueAtPoint(module));
-                    // Console.WriteLine($"inside, mu = {_spline!.ValueAtPoint(module)}");
+                    Console.WriteLine($"inside, mu = {_spline!.ValueAtPoint(module)}");
                 }
             }
 

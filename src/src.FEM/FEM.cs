@@ -2,7 +2,7 @@
 
 using Spline;
 
-public class SolverFem
+public sealed class SolverFem
 {
     public class SolverFemBuilder
     {
@@ -80,27 +80,35 @@ public class SolverFem
 
         int iter;
         var iters = _nonLinearParameters?.MaxIters ?? 1;
-        
-        for (iter = 0; iter < iters; iter++)
-        {
-            AssemblySystem();
-            AccountingDirichletBoundary();
 
+        AssemblySystem();
+        AccountingDirichletBoundary();
+
+        var qk = new Vector<double>(_globalVector.Length);
+
+        _isInit = true;
+
+        for (iter = 1; iter < iters; iter++)
+        {
             _iterativeSolver.SetMatrix(_matrixAssembler.GlobalMatrix!);
             _iterativeSolver.SetVector(_globalVector);
             _iterativeSolver.Compute();
 
-            var q = new Vector<double>(_iterativeSolver.Solution!.Value.Length) { _iterativeSolver.Solution.Value };
-            var residual = (_matrixAssembler.GlobalMatrix! * q - _globalVector).Norm() / _globalVector.Norm();
+            qk.Add(_iterativeSolver.Solution!.Value);
+            _matrixAssembler.GlobalMatrix!.Clear();
+            _globalVector.Fill(0.0);
+
+            AssemblySystem();
+            AccountingDirichletBoundary();
+
+            var residual = (_matrixAssembler.GlobalMatrix! * qk - _globalVector).Norm() / _globalVector.Norm();
 
             Console.WriteLine(residual);
 
-            if (residual < _nonLinearParameters?.Residual && iter != 0) break;
+            if (residual < _nonLinearParameters?.Residual)
+                break;
 
-            _isInit = true;
-
-            _matrixAssembler.GlobalMatrix!.Clear();
-            _globalVector.Fill(0.0);
+            qk.Fill(0.0);
         }
 
         using var sw = new StreamWriter("output/q.txt");
@@ -115,7 +123,7 @@ public class SolverFem
         // CalculateError();
     }
 
-    protected virtual void OnReceived(double value) => Received?.Invoke(this, value);
+    private void OnReceived(double value) => Received?.Invoke(this, value);
 
     private void Initialize()
     {
@@ -151,7 +159,7 @@ public class SolverFem
                 var firstDependenceValue = _dependence!.Data!.First();
                 var lastDependenceValue = _dependence.Data!.Last();
                 // Console.WriteLine($"|B| = {module}");
-            
+
                 if (module > lastDependenceValue.Argument)
                 {
                     mu = 1.0 / (lastDependenceValue.Argument / module * (1.0 / lastDependenceValue.Function - 1.0) +

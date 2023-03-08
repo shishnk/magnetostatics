@@ -5,7 +5,7 @@ using FEM;
 public static class SLAE
 {
     public static Vector<T> Compute<T>(Matrix matrix, Vector<T> f)
-        where T : INumber<T>
+        where T : INumber<T>, IRootFunctions<T>
     {
         Vector<T> x = new(f.Length);
         Vector<T>.Copy(f, x);

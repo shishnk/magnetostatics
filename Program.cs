@@ -17,7 +17,7 @@ SolverFem problem = SolverFem.CreateBuilder()
     .SetSolverSlae(new CGMCholesky(1000, 1E-15))
     .SetAssembler(assembler)
     .SetDependence(muB)
-    .SetNonLinearParameters((1E-11, 10))
+    .SetNonLinearParameters((1E-10, 100))
     .SetSpline(spline)
     .SetBoundaries(boundaryHandler.Process());
 
@@ -25,8 +25,14 @@ problem.Received += assembler.ReceivePermeability;
 
 problem.Compute();
 
-problem.CalculateBAtPoint((-.0078, 0.0016));
-problem.CalculateBAtPoint((-.0037, 0.0017));
-problem.CalculateBAtPoint((-.0013, 0.0019));
-problem.CalculateBAtPoint((.004, 0.0015));
-problem.CalculateBAtPoint((.0087, 0.0013));
+problem.CalculateAzAtPoint((-.0078, 0.0016));
+problem.CalculateAzAtPoint((-.0037, 0.0017));
+// problem.CalculateAzAtPoint((-.0013, 0.0019));
+// problem.CalculateAzAtPoint((.004, 0.0015));
+// problem.CalculateAzAtPoint((.0087, 0.0013));
+//
+// problem.CalculateBAtPoint((-.0078, 0.0016));
+// problem.CalculateBAtPoint((-.0037, 0.0017));
+// problem.CalculateBAtPoint((-.0013, 0.0019));
+// problem.CalculateBAtPoint((.004, 0.0015));
+// problem.CalculateBAtPoint((.0087, 0.0013));

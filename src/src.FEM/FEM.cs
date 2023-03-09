@@ -334,11 +334,11 @@ public sealed class FemSolver
     public double CalculateBAtPoint(Point2D point)
     {
         var ielem = FindElementNumber(point);
-        OnReceived(1.0);
+        OnReceived(1.0 / PhysicsConstants.VacuumPermeability);
         _matrixAssembler.BuildLocalMatrices(ielem);
-        
+
         var sqrModule = 0.0;
-        
+
         for (int i = 0; i < _matrixAssembler.Basis.Size; i++)
         {
             for (int j = 0; j < _matrixAssembler.Basis.Size; j++)
@@ -348,30 +348,30 @@ public sealed class FemSolver
                              _iterativeSolver.Solution.Value[_mesh.Elements[ielem].Nodes[j]];
             }
         }
-        
+
         var elementArea = (_mesh.Points[_mesh.Elements[ielem].Nodes[1]].X -
                            _mesh.Points[_mesh.Elements[ielem].Nodes[0]].X) *
                           (_mesh.Points[_mesh.Elements[ielem].Nodes[2]].Y -
                            _mesh.Points[_mesh.Elements[ielem].Nodes[0]].Y);
-        
+
         sqrModule /= elementArea;
-        
+
         var module = Math.Sqrt(sqrModule);
-        
-        var dx = _iterativeSolver.Solution!.Value[_mesh.Elements[ielem].Nodes[1]] -
-                 _iterativeSolver.Solution!.Value[_mesh.Elements[ielem].Nodes[0]];
-        var dy = _iterativeSolver.Solution!.Value[_mesh.Elements[ielem].Nodes[2]] -
-                 _iterativeSolver.Solution!.Value[_mesh.Elements[ielem].Nodes[0]];
-        
-        var element = _mesh.Elements[ielem];
-        var bPoint = _mesh.Points[element.Nodes[0]];
-        var ePoint = _mesh.Points[element.Nodes[^1]];
-        
-        double hx = ePoint.X - bPoint.X;
-        double hy = ePoint.Y - bPoint.Y;
-        
-        var rotor = (dy / hy, -dx / hx);
-        
+        //
+        // var dx = _iterativeSolver.Solution!.Value[_mesh.Elements[ielem].Nodes[1]] -
+        //          _iterativeSolver.Solution!.Value[_mesh.Elements[ielem].Nodes[0]];
+        // var dy = _iterativeSolver.Solution!.Value[_mesh.Elements[ielem].Nodes[2]] -
+        //          _iterativeSolver.Solution!.Value[_mesh.Elements[ielem].Nodes[0]];
+        //
+        // var element = _mesh.Elements[ielem];
+        // var bPoint = _mesh.Points[element.Nodes[0]];
+        // var ePoint = _mesh.Points[element.Nodes[^1]];
+        //
+        // double hx = ePoint.X - bPoint.X;
+        // double hy = ePoint.Y - bPoint.Y;
+        //
+        // var rotor = (dy / hy, -dx / hx);
+
         // Console.WriteLine($"|B| at ({point.X}; {point.Y}) = {module}");
         // Console.WriteLine(
         // $"|B| at {point} = {rotor.Item1} {rotor.Item2} = {Math.Sqrt(rotor.Item1 * rotor.Item1 + rotor.Item2 * rotor.Item2)}");

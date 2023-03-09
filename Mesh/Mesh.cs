@@ -156,10 +156,13 @@ public class SuperMesh : IBaseMesh
         => ((Points, Elements), Areas) = (meshBuilder.Build(parameters), parameters.Areas);
 }
 
+public static class PhysicsConstants
+{
+    public const double VacuumPermeability = 4.0 * Math.PI * 1E-07;
+}  
+
 public readonly record struct Area(int Number, double Permeability, double Current, int X1, int X2, int Y1, int Y2)
 {
-    private const double VacuumPermeability = 4.0 * Math.PI * 1E-07;
-
     public static Area Parse(string line)
     {
         if (!TryParse(line, out var area))
@@ -183,7 +186,7 @@ public readonly record struct Area(int Number, double Permeability, double Curre
             return false;
         }
 
-        area = new(number, VacuumPermeability * mu, current, x1, x2, y1, y2);
+        area = new(number, PhysicsConstants.VacuumPermeability * mu, current, x1, x2, y1, y2);
         return true;
     }
 }

@@ -12,12 +12,12 @@ Spline spline = Spline.CreateBuilder()
     .SetPartitions(200)
     .SetPoints(muB.Data!.Select(data => new Point2D(data.Argument, data.Function)).ToArray());
 var assembler = new BiMatrixAssembler(new LinearBasis(), integrator, mesh);
-SolverFem problem = SolverFem.CreateBuilder()
+FemSolver problem = FemSolver.CreateBuilder()
     .SetMesh(mesh)
     .SetSolverSlae(new CGMCholesky(1000, 1E-15))
     .SetAssembler(assembler)
     .SetDependence(muB)
-    .SetNonLinearParameters((1E-10, 100))
+    .SetNonLinearParameters((1E-10, 50))
     .SetSpline(spline)
     .SetBoundaries(boundaryHandler.Process());
 
@@ -26,7 +26,7 @@ problem.Received += assembler.ReceivePermeability;
 problem.Compute();
 
 problem.CalculateAzAtPoint((-.0078, 0.0016));
-problem.CalculateAzAtPoint((-.0037, 0.0017));
+// problem.CalculateAzAtPoint((-.0037, 0.0017));
 // problem.CalculateAzAtPoint((-.0013, 0.0019));
 // problem.CalculateAzAtPoint((.004, 0.0015));
 // problem.CalculateAzAtPoint((.0087, 0.0013));

@@ -128,5 +128,5 @@ public class BiMatrixAssembler : BaseMatrixAssembler
         }
     }
 
-    public void ReceivePermeability(object? sender, double value) => _mu = value;
+    public void ReceivePermeability(object? sender, double value) => _mu = PhysicsConstants.VacuumPermeability * value;
 }

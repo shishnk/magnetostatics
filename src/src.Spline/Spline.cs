@@ -87,7 +87,7 @@ public class Spline
         AssemblyMatrix();
         _matrix.LU();
         _vector = SLAE.Compute(_matrix, _vector);
-        ValuesAtPoints();
+        // ValuesAtPoints();
     }
 
     public double ValueAtPoint(double point)
@@ -149,7 +149,8 @@ public class Spline
 
                             return ddFi1 * ddFi2;
                         }
-
+                        
+                        // TODO use 7-diagonal matrix for assembly and local matrix 4x4
                         _matrix[2 * ielem + i, 2 * ielem + j] +=
                             _basis.GetPsi(i, x, _elements[ielem].Length) *
                             _basis.GetPsi(j, x, _elements[ielem].Length) +

@@ -259,7 +259,7 @@ public class MeshParameters
         if (Nesting.Item1 != 0 || Nesting.Item2 != 0) RecalculateParameters();
     }
 
-    private void RecalculateParameters()
+    private void RecalculateParameters() // TODO -> recalculate one parameter: x or y 
     {
         _splitsX = _splitsX.Select(x => Nesting.Item1 == 1 ? x * 2 : x * 4).ToArray();
         _splitsY = _splitsY.Select(y => Nesting.Item1 == 1 ? y * 2 : y * 4).ToArray();

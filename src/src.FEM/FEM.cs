@@ -357,26 +357,9 @@ public sealed class FemSolver
         sqrModule /= elementArea;
 
         var module = Math.Sqrt(sqrModule);
-        //
-        // var dx = _iterativeSolver.Solution!.Value[_mesh.Elements[ielem].Nodes[1]] -
-        //          _iterativeSolver.Solution!.Value[_mesh.Elements[ielem].Nodes[0]];
-        // var dy = _iterativeSolver.Solution!.Value[_mesh.Elements[ielem].Nodes[2]] -
-        //          _iterativeSolver.Solution!.Value[_mesh.Elements[ielem].Nodes[0]];
-        //
-        // var element = _mesh.Elements[ielem];
-        // var bPoint = _mesh.Points[element.Nodes[0]];
-        // var ePoint = _mesh.Points[element.Nodes[^1]];
-        //
-        // double hx = ePoint.X - bPoint.X;
-        // double hy = ePoint.Y - bPoint.Y;
-        //
-        // var rotor = (dy / hy, -dx / hx);
 
         // Console.WriteLine($"|B| at ({point.X}; {point.Y}) = {module}");
-        // Console.WriteLine(
-        // $"|B| at {point} = {rotor.Item1} {rotor.Item2} = {Math.Sqrt(rotor.Item1 * rotor.Item1 + rotor.Item2 * rotor.Item2)}");
         return module;
-        // return Math.Sqrt(rotor.Item1 * rotor.Item1 + rotor.Item2 * rotor.Item2);
 
         // var ielem = FindElementNumber(point);
         //

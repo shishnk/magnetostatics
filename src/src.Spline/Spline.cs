@@ -42,7 +42,8 @@ public class Spline
 
     private Interval[] _elements = default!;
     private Point2D[] _points = default!;
-    private Matrix _matrix = default!;
+    private SevenDiagonalMatrix _globalMatrix = default!;
+    private Matrix _localMatrix = default!;
     private FEM.Vector<double> _vector = default!;
     private List<Point2D> _result = default!;
     private IBasis1D _basis = default!;
@@ -55,8 +56,9 @@ public class Spline
 
     private void Init()
     {
-        _matrix = new(_elements.Length * 2 + 2);
-        _vector = new(_matrix.Size);
+        _globalMatrix = new(_elements.Length * 2 + 2);
+        _localMatrix = new(_basis.Size);
+        _vector = new(_globalMatrix.Size);
         _result = new();
     }
 
@@ -85,8 +87,8 @@ public class Spline
         BuildMesh();
         Init();
         AssemblyMatrix();
-        _matrix.LU();
-        _vector = SLAE.Compute(_matrix, _vector);
+        var gaussSeidel = new GaussSeidel(1000, 1E-15, 1.23);
+        _vector = gaussSeidel.Compute(_globalMatrix, _vector);
         // ValuesAtPoints();
     }
 
@@ -149,16 +151,39 @@ public class Spline
 
                             return ddFi1 * ddFi2;
                         }
-                        
-                        // TODO use 7-diagonal matrix for assembly and local matrix 4x4
-                        _matrix[2 * ielem + i, 2 * ielem + j] +=
-                            _basis.GetPsi(i, x, _elements[ielem].Length) *
-                            _basis.GetPsi(j, x, _elements[ielem].Length) +
-                            _parameters.Alpha * _integrator.Gauss1D(Function1, _elements[ielem]) +
-                            _parameters.Beta * _integrator.Gauss1D(Function2, _elements[ielem]);
+
+                        _localMatrix[i, j] += _basis.GetPsi(i, x, _elements[ielem].Length) *
+                                              _basis.GetPsi(j, x, _elements[ielem].Length) +
+                                              _parameters.Alpha * _integrator.Gauss1D(Function1, _elements[ielem]) +
+                                              _parameters.Beta * _integrator.Gauss1D(Function2, _elements[ielem]);
                     }
                 }
             }
+
+            for (int i = 0; i < _localMatrix.Size; i++)
+            {
+                _globalMatrix[0, 2 * ielem + i] += _localMatrix[i, i];
+            }
+
+            for (int i = 0; i < _localMatrix.Size - 1; i++)
+            {
+                _globalMatrix[1, 2 * ielem + i] += _localMatrix[i, i + 1];
+                _globalMatrix[4, 2 * ielem + i] += _localMatrix[i, i + 1];
+            }
+
+            for (int i = 0; i < _localMatrix.Size - 2; i++)
+            {
+                _globalMatrix[2, 2 * ielem + i] = _localMatrix[i, i + 2];
+                _globalMatrix[5, 2 * ielem + i] = _localMatrix[i, i + 2];
+            }
+
+            for (int i = 0; i < _localMatrix.Size - 3; i++)
+            {
+                _globalMatrix[3, 2 * ielem + i] = _localMatrix[i, i + 3];
+                _globalMatrix[6, 2 * ielem + i] = _localMatrix[i, i + 3];
+            }
+
+            _localMatrix.Clear();
         }
     }
 

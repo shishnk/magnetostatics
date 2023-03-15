@@ -6,8 +6,11 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
     </PropertyGroup>
-    
+
     <ItemGroup>
+        <Using Include="Magnetostatics" />
+        <Using Include="Magnetostatics.src.FEM" />
+        <Using Include="Magnetostatics.src.Spline" />
         <Using Include="Magnetostatics.Mesh" />
         <Using Include="Magnetostatics.Tests" />
         <Using Include="Newtonsoft.Json" />
@@ -19,8 +22,29 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Newtonsoft.Json" Version="13.0.3-beta1" />
-      <PackageReference Include="Throw" Version="1.3.1" />
+        <PackageReference Include="Newtonsoft.Json" Version="13.0.3-beta1" />
+        <PackageReference Include="Throw" Version="1.3.1" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Update="input\meshParameters">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
+        <None Update="output\elements.txt">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
+        <None Update="output\points.txt">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
+        <None Update="input\boundaryParameters.json">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
+        <None Update="output\q.txt">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
+        <None Update="input\mu(B)">
+          <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
     </ItemGroup>
 
 </Project>

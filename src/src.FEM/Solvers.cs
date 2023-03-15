@@ -213,3 +213,60 @@ public class CGMCholesky : IterativeSolver
         }
     }
 }
+
+public record GaussSeidel(int MaxIters, double Eps, double W)
+{
+    public Vector<double> Compute(SevenDiagonalMatrix diagMatrix, Vector<double> pr)
+    {
+        Vector<double> qk = new(diagMatrix.Size);
+        Vector<double> qk1 = new(diagMatrix.Size);
+        Vector<double> residual = new(diagMatrix.Size);
+        double prNorm = pr.Norm();
+
+        for (int i = 0; i < MaxIters; i++)
+        {
+            for (int k = 0; k < diagMatrix.Size; k++)
+            {
+                double sum1 = MultLine(diagMatrix, k, qk1, 1);
+                double sum2 = MultLine(diagMatrix, k, qk, 2);
+
+                residual[k] = pr[k] - (sum1 + sum2);
+                qk1[k] = qk[k] + W * residual[k] / diagMatrix[0, k];
+            }
+
+
+            Vector<double>.Copy(qk1, qk);
+            qk1.Fill(0.0);
+
+            if (residual.Norm() / prNorm < Eps) break;
+        }
+
+        return qk;
+    }
+
+    private static double MultLine(SevenDiagonalMatrix diagMatrix, int i, Vector<double> vector, int method)
+    {
+        double sum = 0.0;
+
+        if (method is 0 or 1)
+        {
+            if (i > 0) sum += diagMatrix[4, i - 1] * vector[i - 1];
+
+            if (i > 1) sum += diagMatrix[5, i - 2] * vector[i - 2];
+
+            if (i > 2) sum += diagMatrix[6, i - 3] * vector[i - 3];
+        }
+
+        if (method is not (0 or 2)) return sum;
+
+        sum += diagMatrix[0, i] * vector[i];
+
+        if (i < diagMatrix.Size - 1) sum += diagMatrix[1, i] * vector[i + 1];
+
+        if (i < diagMatrix.Size - 2) sum += diagMatrix[2, i] * vector[i + 2];
+
+        if (i < diagMatrix.Size - 3) sum += diagMatrix[3, i] * vector[i + 3];
+
+        return sum;
+    }
+}

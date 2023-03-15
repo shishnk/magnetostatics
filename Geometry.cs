@@ -51,33 +51,12 @@ public readonly record struct Point2D(double X, double Y)
     public static Point2D operator *(Point2D p, double value) => new(p.X * value, p.Y * value);
 
     public static Point2D operator /(Point2D p, double value) => new(p.X / value, p.Y / value);
-}
 
-public readonly record struct Point1D(double X, double Value)
-{
-    public static Point1D operator +(Point1D point1D, (double X, double Value) v)
-        => new(point1D.X + v.X, point1D.Value + v.Value);
+    public static Point2D operator +(Point2D p, (double, double) value) => new(p.X + value.Item1, p.Y + value.Item2);
 
-    public static Point1D[] ReadJson(string jsonPath)
-    {
-        try
-        {
-            if (!File.Exists(jsonPath))
-            {
-                throw new("File does not exist");
-            }
+    public static Point2D operator -(Point2D p, (double, double) value) => new(p.X - value.Item1, p.Y - value.Item2);
 
-            using var sr = new StreamReader(jsonPath);
-            return JsonConvert.DeserializeObject<Point1D[]>(sr.ReadToEnd()) ?? Array.Empty<Point1D>();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"We had problem: {ex.Message}");
-            throw;
-        }
-    }
-
-    public override string ToString() => $"({X},{Value}";
+    public static implicit operator Point2D((double, double) value) => new(value.Item1, value.Item2);
 }
 
 public class IntervalJsonConverter : JsonConverter
@@ -128,10 +107,22 @@ public readonly record struct Interval(
         interval = new(x, y);
         return true;
     }
+
+    public bool IsContain(double point)
+        => point >= LeftBorder && point <= RightBorder;
 }
 
 public readonly record struct Rectangle(Point2D LeftBottom, Point2D RightTop)
 {
     public Point2D LeftTop { get; } = new(LeftBottom.X, RightTop.Y);
     public Point2D RightBottom { get; } = new(RightTop.X, LeftBottom.Y);
+}
+
+public class FiniteElement
+{
+    public IReadOnlyList<int> Nodes { get; }
+    public int AreaNumber { get; }
+
+    public FiniteElement(IReadOnlyList<int> nodes, int areaNumber)
+        => (Nodes, AreaNumber) = (nodes, areaNumber);
 }

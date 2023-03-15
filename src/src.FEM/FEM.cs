@@ -1,43 +1,63 @@
 ﻿namespace Magnetostatics.src.FEM;
 
-public class SolverFem
+using Spline;
+
+public sealed class FemSolver
 {
-    public class SolverFemBuilder
+    public class FemSolverBuilder
     {
-        private readonly SolverFem _solverFem = new();
+        private readonly FemSolver _femSolver = new();
 
-        public SolverFemBuilder SetTest(ITest test)
+        public FemSolverBuilder SetTest(ITest test)
         {
-            _solverFem._test = test;
+            _femSolver._test = test;
             return this;
         }
 
-        public SolverFemBuilder SetMesh(IBaseMesh mesh)
+        public FemSolverBuilder SetMesh(IBaseMesh mesh)
         {
-            _solverFem._mesh = mesh;
+            _femSolver._mesh = mesh;
             return this;
         }
 
-        public SolverFemBuilder SetSolverSlae(IterativeSolver iterativeSolver)
+        public FemSolverBuilder SetSolverSlae(IterativeSolver iterativeSolver)
         {
-            _solverFem._iterativeSolver = iterativeSolver;
+            _femSolver._iterativeSolver = iterativeSolver;
             return this;
         }
 
-        public SolverFemBuilder SetBoundaries(IEnumerable<IBoundary> boundaries)
+        public FemSolverBuilder SetBoundaries(IEnumerable<IBoundary> boundaries)
         {
-            _solverFem._boundaries = boundaries.DistinctBy(b => b.Node);
+            _femSolver._boundaries = boundaries.DistinctBy(b => b.Node);
             return this;
         }
 
-        public SolverFemBuilder SetAssembler(BaseMatrixAssembler matrixAssembler)
+        public FemSolverBuilder SetAssembler(BaseMatrixAssembler matrixAssembler)
         {
-            _solverFem._matrixAssembler = matrixAssembler;
+            _femSolver._matrixAssembler = matrixAssembler;
             return this;
         }
 
-        public static implicit operator SolverFem(SolverFemBuilder builder)
-            => builder._solverFem;
+        public FemSolverBuilder SetDependence(MathDependence dependence)
+        {
+            _femSolver._dependence = dependence;
+            return this;
+        }
+
+        public FemSolverBuilder SetNonLinearParameters((double Residual, int MaxIters) nonLinearParameters)
+        {
+            _femSolver._nonLinearParameters = nonLinearParameters;
+            return this;
+        }
+
+        public FemSolverBuilder SetSpline(Spline spline)
+        {
+            _femSolver._spline = spline;
+            return this;
+        }
+
+        public static implicit operator FemSolver(FemSolverBuilder builder)
+            => builder._femSolver;
     }
 
     private IBaseMesh _mesh = default!;
@@ -47,42 +67,65 @@ public class SolverFem
     private Vector<double> _localVector = default!;
     private Vector<double> _globalVector = default!;
     private BaseMatrixAssembler _matrixAssembler = default!;
+    private MathDependence? _dependence;
+    private (double Residual, int MaxIters)? _nonLinearParameters;
+    private Spline? _spline;
+    private bool _isInit;
+
+    public event EventHandler<double>? Received;
 
     public void Compute()
     {
         Initialize();
+
+        int iter;
+        var iters = _nonLinearParameters?.MaxIters ?? 1;
+
         AssemblySystem();
-        _matrixAssembler.GlobalMatrix.PrintDense("output/matrixBefore.txt");
         AccountingDirichletBoundary();
 
-        _matrixAssembler.GlobalMatrix.PrintDense("output/matrixAfter.txt");
+        var qk = new Vector<double>(_globalVector.Length);
 
-        _iterativeSolver.SetMatrix(_matrixAssembler.GlobalMatrix!);
-        _iterativeSolver.SetVector(_globalVector);
-        _iterativeSolver.Compute();
+        _isInit = true;
 
-        var exact = new double[_mesh.Points.Count];
-
-        for (int i = 0; i < exact.Length; i++)
+        for (iter = 0; iter < iters; iter++)
         {
-            exact[i] = _test.Az(_mesh.Points[i]);
+            _iterativeSolver.SetMatrix(_matrixAssembler.GlobalMatrix!);
+            _iterativeSolver.SetVector(_globalVector);
+            _iterativeSolver.Compute();
+
+            qk.Add(_iterativeSolver.Solution!.Value);
+            _matrixAssembler.GlobalMatrix!.Clear();
+            _globalVector.Fill(0.0);
+
+            AssemblySystem();
+            AccountingDirichletBoundary();
+
+            var residual = (_matrixAssembler.GlobalMatrix! * qk - _globalVector).Norm() / _globalVector.Norm();
+
+            Console.WriteLine(residual);
+
+            if (residual < _nonLinearParameters?.Residual) break;
         }
 
-        var result = exact.Zip(_iterativeSolver.Solution!.Value, (v1, v2) => (v2, v1));
+        using var sw = new StreamWriter("output/q.txt");
 
-        foreach (var (v1, v2) in result)
+        foreach (var value in _iterativeSolver.Solution!.Value)
         {
-            Console.WriteLine($"{v1} ------------ {v2} ");
+            sw.WriteLine(value);
         }
 
-        Console.WriteLine("---------------------------");
+        Console.WriteLine($"Iterations = {iter}");
 
-        CalculateError();
+        // CalculateError();
     }
+
+    private void OnReceived(double value) => Received?.Invoke(this, value);
 
     private void Initialize()
     {
         PortraitBuilder.Build(_mesh, out var ig, out var jg);
+        _spline?.Compute();
         _matrixAssembler.GlobalMatrix = new(ig.Length - 1, jg.Length)
         {
             Ig = ig,
@@ -90,7 +133,7 @@ public class SolverFem
         };
 
         _globalVector = new(ig.Length - 1);
-        _localVector = new(_matrixAssembler.BasisSize);
+        _localVector = new(_matrixAssembler.Basis.Size);
     }
 
     private void AssemblySystem()
@@ -99,16 +142,52 @@ public class SolverFem
         {
             var element = _mesh.Elements[ielem];
 
+            if (!_isInit && element.AreaNumber == 1 && _dependence is not null)
+            {
+                OnReceived(_dependence.Data![0].Function);
+            }
+
+            if (_isInit && element.AreaNumber == 1 && _dependence is not null)
+            {
+                double mu;
+                var localPoints = _mesh.Elements[ielem].Nodes.Select(node => _mesh.Points[node]).ToArray();
+                var massCenter = new Point2D(localPoints.Sum(p => p.X) / 4.0, localPoints.Sum(p => p.Y) / 4.0);
+                var module = CalculateBAtPoint(massCenter);
+                var firstDependenceValue = _dependence!.Data!.First();
+                var lastDependenceValue = _dependence.Data!.Last();
+                // Console.WriteLine($"|B| = {module}");
+
+                if (module > lastDependenceValue.Argument)
+                {
+                    mu = 1.0 / (lastDependenceValue.Argument / module * (1.0 / lastDependenceValue.Function - 1.0) +
+                                1.0);
+                    OnReceived(mu);
+                    // Console.WriteLine($"> table value, mu = {mu}");
+                }
+                else if (module <= firstDependenceValue.Argument)
+                {
+                    mu = firstDependenceValue.Function;
+                    OnReceived(mu);
+                    // Console.WriteLine($"< table value, mu = {mu}");
+                }
+                else
+                {
+                    OnReceived(_spline!.ValueAtPoint(module));
+                    // Console.WriteLine($"inside, mu = {_spline!.ValueAtPoint(module)}");
+                }
+            }
+
             _matrixAssembler.BuildLocalMatrices(ielem);
             BuildLocalVector(ielem);
 
-            for (int i = 0; i < _matrixAssembler.BasisSize; i++)
+            for (int i = 0; i < _matrixAssembler.Basis.Size; i++)
             {
-                _globalVector[element[i]] += _localVector[i];
+                _globalVector[element.Nodes[i]] += _localVector[i];
 
-                for (int j = 0; j < _matrixAssembler.BasisSize; j++)
+                for (int j = 0; j < _matrixAssembler.Basis.Size; j++)
                 {
-                    _matrixAssembler.FillGlobalMatrix(element[i], element[j], _matrixAssembler.StiffnessMatrix[i, j]);
+                    _matrixAssembler.FillGlobalMatrix(element.Nodes[i], element.Nodes[j],
+                        _matrixAssembler.StiffnessMatrix[i, j]);
                 }
             }
         }
@@ -117,66 +196,77 @@ public class SolverFem
     private void BuildLocalVector(int ielem)
     {
         _localVector.Fill(0.0);
+        var jCurrent = _mesh.Areas.First(area => area.Number == _mesh.Elements[ielem].AreaNumber).Current;
 
-        for (int i = 0; i < _matrixAssembler.BasisSize; i++)
+        for (int i = 0; i < _matrixAssembler.Basis.Size; i++)
         {
-            for (int j = 0; j < _matrixAssembler.BasisSize; j++)
+            for (int j = 0; j < _matrixAssembler.Basis.Size; j++)
             {
-                _localVector[i] += _matrixAssembler.MassMatrix[i, j] * _test.J(_mesh.Points[_mesh.Elements[ielem][j]]);
+                // _localVector[i] += _matrixAssembler.MassMatrix[i, j] *
+                //                    _test.J(_mesh.Points[_mesh.Elements[ielem].Nodes[j]]);
+                _localVector[i] += _matrixAssembler.MassMatrix[i, j] * jCurrent;
             }
         }
     }
 
     private void AccountingDirichletBoundary()
     {
-        int[] checkBc = new int[_mesh.Points.Count];
-
-        checkBc.Fill(-1);
-        var boundariesArray = _boundaries.ToArray();
-
-        for (int i = 0; i < boundariesArray.Length; i++)
-        {
-            boundariesArray[i].Value = _test.Az(_mesh.Points[boundariesArray[i].Node]);
-            checkBc[boundariesArray[i].Node] = i;
-        }
-
-        // for (int i = 0; i < arrayBoundaries.Length; i++)
+        // int[] checkBc = new int[_mesh.Points.Count];
+        //
+        // checkBc.Fill(-1);
+        // var boundariesArray = _boundaries.ToArray();
+        //
+        // // foreach (var b in boundariesArray)
+        // // {
+        // //     _matrixAssembler.GlobalMatrix.Di[b.Node] = 1E+32;
+        // //     _globalVector[b.Node] = 1E+32 * b.Value;
+        // // }
+        //
+        // for (var i = 0; i < boundariesArray.Length; i++)
         // {
-        //     _matrixAssembler.GlobalMatrix.Di[arrayBoundaries[i].Node] = 1E+32;
-        //     _globalVector[arrayBoundaries[i].Node] = 1E+32 * arrayBoundaries[i].Value;
+        //     boundariesArray[i].Value = _test.Az(_mesh.Points[boundariesArray[i].Node]);
+        //     checkBc[boundariesArray[i].Node] = i;
+        // }
+        //
+        // for (int i = 0; i < _mesh.Points.Count; i++)
+        // {
+        //     int index;
+        //     if (checkBc[i] != -1)
+        //     {
+        //         _matrixAssembler.GlobalMatrix!.Di[i] = 1.0;
+        //         _globalVector[i] = boundariesArray[checkBc[i]].Value;
+        //
+        //         for (int k = _matrixAssembler.GlobalMatrix.Ig[i]; k < _matrixAssembler.GlobalMatrix.Ig[i + 1]; k++)
+        //         {
+        //             index = _matrixAssembler.GlobalMatrix.Jg[k];
+        //
+        //             if (checkBc[index] == -1)
+        //             {
+        //                 _globalVector[index] -= _matrixAssembler.GlobalMatrix.Gg[k] * _globalVector[i];
+        //             }
+        //
+        //             _matrixAssembler.GlobalMatrix.Gg[k] = 0.0;
+        //         }
+        //     }
+        //     else
+        //     {
+        //         for (int k = _matrixAssembler.GlobalMatrix!.Ig[i]; k < _matrixAssembler.GlobalMatrix.Ig[i + 1]; k++)
+        //         {
+        //             index = _matrixAssembler.GlobalMatrix.Jg[k];
+        //
+        //             if (checkBc[index] == -1) continue;
+        //             _globalVector[i] -= _matrixAssembler.GlobalMatrix.Gg[k] * _globalVector[index];
+        //             _matrixAssembler.GlobalMatrix.Gg[k] = 0.0;
+        //         }
+        //     }
         // }
 
-        for (int i = 0; i < _mesh.Points.Count; i++)
+        var boundariesArray = _boundaries.ToArray();
+
+        foreach (var boundary in boundariesArray)
         {
-            int index;
-            if (checkBc[i] != -1)
-            {
-                _matrixAssembler.GlobalMatrix!.Di[i] = 1.0;
-                _globalVector[i] = boundariesArray[checkBc[i]].Value;
-
-                for (int k = _matrixAssembler.GlobalMatrix.Ig[i]; k < _matrixAssembler.GlobalMatrix.Ig[i + 1]; k++)
-                {
-                    index = _matrixAssembler.GlobalMatrix.Jg[k];
-
-                    if (checkBc[index] == -1)
-                    {
-                        _globalVector[index] -= _matrixAssembler.GlobalMatrix.Gg[k] * _globalVector[i];
-                    }
-
-                    _matrixAssembler.GlobalMatrix.Gg[k] = 0.0;
-                }
-            }
-            else
-            {
-                for (int k = _matrixAssembler.GlobalMatrix!.Ig[i]; k < _matrixAssembler.GlobalMatrix.Ig[i + 1]; k++)
-                {
-                    index = _matrixAssembler.GlobalMatrix.Jg[k];
-
-                    if (checkBc[index] == -1) continue;
-                    _globalVector[i] -= _matrixAssembler.GlobalMatrix.Gg[k] * _globalVector[index];
-                    _matrixAssembler.GlobalMatrix.Gg[k] = 0.0;
-                }
-            }
+            _matrixAssembler.GlobalMatrix!.Di[boundary.Node] = 1E+32;
+            _globalVector[boundary.Node] = 0.0;
         }
     }
 
@@ -213,5 +303,108 @@ public class SolverFem
         // }
     }
 
-    public static SolverFemBuilder CreateBuilder() => new();
+    public double CalculateAzAtPoint(Point2D point)
+    {
+        var res = 0.0;
+
+        var ielem = FindElementNumber(point);
+
+        var element = _mesh.Elements[ielem];
+        var bPoint = _mesh.Points[element.Nodes[0]];
+        var ePoint = _mesh.Points[element.Nodes[^1]];
+
+        double hx = ePoint.X - bPoint.X;
+        double hy = ePoint.Y - bPoint.Y;
+
+        var ksi = (point.X - bPoint.X) / hx;
+        var eta = (point.Y - bPoint.Y) / hy;
+
+        var templatePoint = new Point2D(ksi, eta);
+
+        for (int i = 0; i < _matrixAssembler.Basis.Size; i++)
+        {
+            res += _iterativeSolver.Solution!.Value[_mesh.Elements[ielem].Nodes[i]] *
+                   _matrixAssembler.Basis.GetPsi(i, templatePoint);
+        }
+
+        Console.WriteLine($"Az at {point} = {res}");
+        return res;
+    }
+
+    public double CalculateBAtPoint(Point2D point)
+    {
+        var ielem = FindElementNumber(point);
+        OnReceived(1.0 / PhysicsConstants.VacuumPermeability);
+        _matrixAssembler.BuildLocalMatrices(ielem);
+
+        var sqrModule = 0.0;
+
+        for (int i = 0; i < _matrixAssembler.Basis.Size; i++)
+        {
+            for (int j = 0; j < _matrixAssembler.Basis.Size; j++)
+            {
+                sqrModule += _matrixAssembler.StiffnessMatrix[i, j] *
+                             _iterativeSolver.Solution!.Value[_mesh.Elements[ielem].Nodes[i]] *
+                             _iterativeSolver.Solution.Value[_mesh.Elements[ielem].Nodes[j]];
+            }
+        }
+
+        var elementArea = (_mesh.Points[_mesh.Elements[ielem].Nodes[1]].X -
+                           _mesh.Points[_mesh.Elements[ielem].Nodes[0]].X) *
+                          (_mesh.Points[_mesh.Elements[ielem].Nodes[2]].Y -
+                           _mesh.Points[_mesh.Elements[ielem].Nodes[0]].Y);
+
+        sqrModule /= elementArea;
+
+        var module = Math.Sqrt(sqrModule);
+
+        // Console.WriteLine($"|B| at ({point.X}; {point.Y}) = {module}");
+        return module;
+
+        // var ielem = FindElementNumber(point);
+        //
+        // var element = _mesh.Elements[ielem];
+        // var bPoint = _mesh.Points[element.Nodes[0]];
+        // var ePoint = _mesh.Points[element.Nodes[^1]];
+        //
+        // double hx = ePoint.X - bPoint.X;
+        // double hy = ePoint.Y - bPoint.Y;
+        //
+        // var ksi = (point.X - bPoint.X) / hx;
+        // var eta = (point.Y - bPoint.Y) / hy;
+        //
+        // var templatePoint = (ksi, eta);
+        //
+        // double dx = 0.0;
+        // double dy = 0.0;
+        //
+        // for (int i = 0; i < _matrixAssembler.Basis.Size; i++)
+        // {
+        //     dx += _iterativeSolver.Solution!.Value[element.Nodes[i]] *
+        //           _matrixAssembler.Basis.GetDPsi(i, 0, templatePoint);
+        //     dy += _iterativeSolver.Solution!.Value[element.Nodes[i]] *
+        //           _matrixAssembler.Basis.GetDPsi(i, 1, templatePoint);
+        // }
+        //
+        // dx = -dx / hx;
+        // dy /= hy;
+        //
+        // return Math.Sqrt(dx * dx + dy * dy); // calculate with B_x and B_y components of rotor A
+    }
+
+    private int FindElementNumber(Point2D point)
+    {
+        foreach (var (element, idx) in _mesh.Elements.Select((element, idx) => (element, idx)))
+        {
+            if (point.X >= _mesh.Points[element.Nodes[0]].X && point.X <= _mesh.Points[element.Nodes[1]].X &&
+                point.Y >= _mesh.Points[element.Nodes[0]].Y && point.Y <= _mesh.Points[element.Nodes[2]].Y)
+            {
+                return idx;
+            }
+        }
+
+        throw new("Not supported exception!");
+    }
+
+    public static FemSolverBuilder CreateBuilder() => new();
 }

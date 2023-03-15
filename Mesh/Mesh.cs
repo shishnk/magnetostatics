@@ -1,258 +1,279 @@
 ﻿namespace Magnetostatics.Mesh;
 
-public interface IMeshCreator
+public interface IBaseMesh
 {
-    IBaseMesh CreateMesh(IParameters meshParameters, MeshBuilder? meshBuilder = null);
+    IReadOnlyList<Point2D> Points { get; }
+    IReadOnlyList<FiniteElement> Elements { get; }
+    IReadOnlyList<Area> Areas { get; }
 }
-
-public class RegularMeshCreator : IMeshCreator
-{
-    public IBaseMesh CreateMesh(IParameters meshParameters, MeshBuilder? meshBuilder = null) =>
-        new RegularMesh(meshParameters, meshBuilder ?? new LinearMeshBuilder());
-}
-
-// public class IrregularMesh : BaseMesh TODO maybe
 
 public abstract class MeshBuilder
 {
-    protected abstract int SizeElement { get; }
+    protected abstract int ElementSize { get; }
 
-    public abstract (List<Point2D>, int[][]) Build(IParameters meshParameters);
+    public abstract (IReadOnlyList<Point2D>, FiniteElement[]) Build(MeshParameters meshParameters);
 
-    protected (List<Point2D>, int[][]) BaseBuild(IParameters meshParameters)
+    protected (IReadOnlyList<Point2D>, FiniteElement[]) BaseBuild(MeshParameters parameters)
     {
-        if (meshParameters is not MeshParameters parameters)
-        {
-            throw new ArgumentNullException(nameof(parameters), "Parameters mesh is null!");
-        }
-
-        if (parameters.SplitsX is < 1 or < 1)
-        {
-            throw new("The number of splits must be greater than or equal to 1");
-        }
-
         var result = new
         {
-            Points = new List<Point2D>(),
-            Elements = new int[parameters.SplitsX * parameters.SplitsY][].Select(_ => new int[SizeElement])
-                .ToArray(),
+            Points = new Point2D[(parameters.SplitsX.Sum() + 1) * (parameters.SplitsY.Sum() + 1)],
+            Elements = new FiniteElement[parameters.SplitsX.Sum() * parameters.SplitsY.Sum()]
         };
 
-        double hx = parameters.IntervalX.Length / parameters.SplitsX;
-        double hy = parameters.IntervalY.Length / parameters.SplitsY;
+        double[] pointsX = new double[parameters.SplitsX.Sum() + 1];
+        double[] pointsY = new double[parameters.SplitsY.Sum() + 1];
 
-        double[] pointsX = new double[parameters.SplitsX + 1];
-        double[] pointsY = new double[parameters.SplitsY + 1];
+        pointsX[0] = parameters.LinesX[0];
+        pointsY[0] = parameters.LinesY[0];
 
-        pointsX[0] = parameters.IntervalX.LeftBorder;
-        pointsY[0] = parameters.IntervalY.LeftBorder;
+        var idx = 1;
 
-        for (int i = 1; i < parameters.SplitsX + 1; i++)
+        for (int i = 0; i < parameters.LinesX.Length - 1; i++)
         {
-            pointsX[i] = pointsX[i - 1] + hx;
-        }
+            var sum = 0.0;
+            var sign = Math.Sign(parameters.Kx[i]);
 
-        for (int i = 1; i < parameters.SplitsY + 1; i++)
-        {
-            pointsY[i] = pointsY[i - 1] + hy;
-        }
-
-        for (int j = 0; j < parameters.SplitsY + 1; j++)
-        {
-            for (int i = 0; i < parameters.SplitsX + 1; i++)
+            for (int k = 0; k < parameters.SplitsX[i]; k++)
             {
-                result.Points.Add(new(pointsX[i], pointsY[j]));
+                sum += Math.Pow(sign * parameters.Kx[i], sign * k);
+            }
+
+            var hx = (parameters.LinesX[i + 1] - parameters.LinesX[i]) / sum;
+
+            for (int j = 0, k = idx; j < parameters.SplitsX[i] - 1; j++, k++)
+            {
+                pointsX[idx++] = pointsX[k - 1] + hx;
+                hx = sign == 1 ? hx * parameters.Kx[i] : hx / (sign * parameters.Kx[i]);
+            }
+
+            pointsX[idx++] = parameters.LinesX[i + 1];
+        }
+
+        idx = 1;
+
+        for (int i = 0; i < parameters.LinesY.Length - 1; i++)
+        {
+            var sum = 0.0;
+            var sign = Math.Sign(parameters.Ky[i]);
+
+            for (int k = 0; k < parameters.SplitsY[i]; k++)
+            {
+                sum += Math.Pow(sign * parameters.Ky[i], sign * k);
+            }
+
+            var hy = (parameters.LinesY[i + 1] - parameters.LinesY[i]) / sum;
+
+            for (int j = 0, k = idx; j < parameters.SplitsY[i] - 1; j++, k++)
+            {
+                pointsY[idx++] = pointsY[k - 1] + hy;
+                hy = sign == 1 ? hy * parameters.Ky[i] : hy / (sign * parameters.Ky[i]);
+            }
+
+            pointsY[idx++] = parameters.LinesY[i + 1];
+        }
+
+        idx = 0;
+
+        foreach (var y in pointsY)
+        {
+            foreach (var x in pointsX)
+            {
+                result.Points[idx++] = new(x, y);
             }
         }
 
-        int nx = parameters.SplitsX + 1;
-        int index = 0;
+        int nx = pointsX.Length;
+        idx = 0;
 
-        for (int j = 0; j < parameters.SplitsY; j++)
+        var nodes = new int[ElementSize];
+
+        for (int j = 0; j < pointsY.Length - 1; j++)
         {
-            for (int i = 0; i < parameters.SplitsX; i++)
+            for (int i = 0; i < pointsX.Length - 1; i++)
             {
-                result.Elements[index][0] = i + j * nx;
-                result.Elements[index][1] = i + 1 + j * nx;
-                result.Elements[index][2] = i + (j + 1) * nx;
-                result.Elements[index++][3] = i + 1 + (j + 1) * nx;
+                nodes[0] = i + j * nx;
+                nodes[1] = i + 1 + j * nx;
+                nodes[2] = i + (j + 1) * nx;
+                nodes[3] = i + 1 + (j + 1) * nx;
+
+                result.Elements[idx++] = new(nodes.ToArray(), FindAreaNumber(result.Points, nodes, parameters));
             }
+        }
+
+        using StreamWriter sw1 = new("output/elements.txt"), sw2 = new("output/points.txt");
+
+        foreach (var element in result.Elements)
+        {
+            foreach (var node in element.Nodes)
+            {
+                sw1.Write(node + " ");
+            }
+
+            sw1.Write(element.AreaNumber);
+            sw1.WriteLine();
+        }
+
+        foreach (var point in result.Points)
+        {
+            sw2.WriteLine($"{point.X} {point.Y}");
         }
 
         return (result.Points, result.Elements);
+    }
+
+    protected static int FindAreaNumber(Point2D[] points, IEnumerable<int> nodes, MeshParameters parameters)
+    {
+        var localPoints = nodes.Select(node => points[node]).ToArray();
+
+        foreach (var area in from area in parameters.Areas
+                 let massCenter = new Point2D(localPoints.Sum(p => p.X) / 4.0, localPoints.Sum(p => p.Y) / 4.0)
+                 where massCenter.X >= parameters.LinesX[area.X1] && massCenter.X <= parameters.LinesX[area.X2] &&
+                       massCenter.Y >= parameters.LinesY[area.Y1] && massCenter.Y <= parameters.LinesY[area.Y2]
+                 select area)
+        {
+            return area.Number;
+        }
+
+        throw new("Incorrect area parameters!");
     }
 }
 
 public class LinearMeshBuilder : MeshBuilder
 {
-    protected override int SizeElement => 4;
+    protected override int ElementSize => 4;
 
-    public override (List<Point2D>, int[][]) Build(IParameters meshParameters)
+    public override (IReadOnlyList<Point2D>, FiniteElement[]) Build(MeshParameters parameters) => BaseBuild(parameters);
+}
+
+public class SuperMesh : IBaseMesh
+{
+    public IReadOnlyList<Point2D> Points { get; }
+    public IReadOnlyList<FiniteElement> Elements { get; }
+    public IReadOnlyList<Area> Areas { get; }
+
+    public SuperMesh(MeshParameters parameters, MeshBuilder meshBuilder)
+        => ((Points, Elements), Areas) = (meshBuilder.Build(parameters), parameters.Areas);
+}
+
+public static class PhysicsConstants
+{
+    public const double VacuumPermeability = 4.0 * Math.PI * 1E-07;
+}  
+
+public readonly record struct Area(int Number, double Permeability, double Current, int X1, int X2, int Y1, int Y2)
+{
+    public static Area Parse(string line)
     {
-        if (meshParameters is not MeshParameters parameters)
+        if (!TryParse(line, out var area))
         {
-            throw new ArgumentNullException(nameof(parameters), "Parameters mesh is null!");
+            throw new FormatException("Cant parse Area!");
         }
 
-        var result = BaseBuild(meshParameters);
+        return area;
+    }
 
-        return (result.Item1, result.Item2);
+    public static bool TryParse(string line, out Area area)
+    {
+        var data = line.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+
+        if (data.Length != 7 || !int.TryParse(data[0], out var number) || !double.TryParse(data[1], out var mu)
+            || !double.TryParse(data[2], out var current) ||
+            !int.TryParse(data[3], out var x1) || !int.TryParse(data[4], out var x2) ||
+            !int.TryParse(data[5], out var y1) || !int.TryParse(data[6], out var y2))
+        {
+            area = default;
+            return false;
+        }
+
+        area = new(number, PhysicsConstants.VacuumPermeability * mu, current, x1, x2, y1, y2);
+        return true;
     }
 }
 
-public class QuadraticMeshBuilder : MeshBuilder
+public class MeshParameters
 {
-    protected override int SizeElement => 9;
+    private readonly Area[] _areas;
+    private int[] _splitsX;
+    private int[] _splitsY;
+    private double[] _kx;
+    private double[] _ky;
 
-    public override (List<Point2D>, int[][]) Build(IParameters meshParameters)
+    public ImmutableArray<double> LinesX { get; init; }
+    public ImmutableArray<double> LinesY { get; init; }
+    public ImmutableArray<int> SplitsX => _splitsX.ToImmutableArray();
+    public ImmutableArray<int> SplitsY => _splitsY.ToImmutableArray();
+    public ImmutableArray<double> Kx => _kx.ToImmutableArray();
+    public ImmutableArray<double> Ky => _ky.ToImmutableArray();
+    public (int, int) Nesting { get; init; }
+    public ImmutableArray<Area> Areas => _areas.ToImmutableArray();
+
+    public MeshParameters(IEnumerable<double> linesX, IEnumerable<double> linesY, IEnumerable<int> splitsX,
+        IEnumerable<int> splitsY, IEnumerable<double> kx, IEnumerable<double> ky, (int, int) nesting,
+        IEnumerable<Area> areas)
     {
-        if (meshParameters is not MeshParameters parameters)
+        LinesX = linesX.ToImmutableArray();
+        LinesY = linesY.ToImmutableArray();
+        _splitsX = splitsX.ToArray();
+        _splitsY = splitsY.ToArray();
+        _kx = kx.ToArray();
+        _ky = ky.ToArray();
+        Nesting = nesting;
+        _areas = areas.ToArray();
+    }
+
+
+    public MeshParameters(string path)
+    {
+        if (!File.Exists(path)) throw new("File does not exist");
+
+        using var sr = new StreamReader(path);
+        LinesX = sr.ReadLine()!.Split().Where(line => !string.IsNullOrWhiteSpace(line)).Select(double.Parse)
+            .ToImmutableArray();
+        LinesY = sr.ReadLine()!.Split().Where(line => !string.IsNullOrWhiteSpace(line)).Select(double.Parse)
+            .ToImmutableArray();
+        _splitsX = sr.ReadLine()!.Split().Where(line => !string.IsNullOrWhiteSpace(line)).Select(int.Parse)
+            .ToArray();
+        _splitsY = sr.ReadLine()!.Split().Where(line => !string.IsNullOrWhiteSpace(line)).Select(int.Parse)
+            .ToArray();
+        _kx = sr.ReadLine()!.Split().Where(line => !string.IsNullOrWhiteSpace(line)).Select(double.Parse)
+            .ToArray();
+        _ky = sr.ReadLine()!.Split().Where(line => !string.IsNullOrWhiteSpace(line)).Select(double.Parse)
+            .ToArray();
+        var line = sr.ReadLine()!.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+        Nesting = (int.Parse(line[0]), int.Parse(line[1]));
+        _areas = sr.ReadToEnd().Split("\n").Select(Area.Parse).ToArray();
+
+        var expectedResult = Areas.OrderBy(area => area.Number);
+
+        if (Nesting.Item1 > 2 || Nesting.Item2 > 2 || Nesting.Item1 < 0 || Nesting.Item2 < 0)
         {
-            throw new ArgumentNullException(nameof(parameters), "Parameters mesh is null!");
+            // maybe TODO any number of nesting mesh
+            throw new("Nesting parameters should be from 0 to 2!");
         }
 
-        (List<Point2D> Points, int[][] Elements) result = BaseBuild(meshParameters);
-        var pointsX = new double[2 * parameters.SplitsX + 1];
-        var pointsY = new double[2 * parameters.SplitsY + 1];
-        var vertices = new Point2D[9];
+        if (!expectedResult.SequenceEqual(Areas)) throw new("Area numbers must be sorted by ascending!");
 
-        pointsX.Fill(int.MinValue);
-        pointsY.Fill(int.MinValue);
+        _areas = _areas.OrderByDescending(area => area.Number).ToArray();
 
-        foreach (var ielem in result.Elements)
-        {
-            var v1 = result.Points[ielem[0]];
-            var v2 = result.Points[ielem[1]];
-            var v3 = result.Points[ielem[2]];
-            var v4 = result.Points[ielem[3]];
+        if (Nesting.Item1 != 0 || Nesting.Item2 != 0) RecalculateParameters();
+    }
 
-            RecalculatePoints(v1, v2, v3, v4);
-
-            pointsX = pointsX.Concat(vertices.Select(p => p.X)).ToArray();
-            pointsY = pointsY.Concat(vertices.Select(p => p.Y)).ToArray();
-        }
-
-        pointsX = pointsX.OrderBy(v => v).Distinct().ToArray();
-        pointsY = pointsY.OrderBy(v => v).Distinct().ToArray();
-        result.Points.Clear();
-
-        foreach (var pointY in pointsY.Skip(1))
-        {
-            foreach (var pointX in pointsX.Skip(1))
+    private void RecalculateParameters() // TODO -> recalculate one parameter: x or y 
+    {
+        _splitsX = _splitsX.Select(x => Nesting.Item1 == 1 ? x * 2 : x * 4).ToArray();
+        _splitsY = _splitsY.Select(y => Nesting.Item1 == 1 ? y * 2 : y * 4).ToArray();
+        _kx = _kx.Select(k =>
             {
-                result.Points.Add(new(pointX, pointY));
-            }
-        }
-
-        var nx = 2 * parameters.SplitsX + 1;
-        var index = 0;
-
-        for (int j = 0; j < parameters.SplitsY; j++)
-        {
-            for (int i = 0; i < parameters.SplitsX; i++)
+                var sign = Math.Sign(k);
+                return Nesting.Item1 == 1 ? sign * Math.Sqrt(sign * k) : sign * Math.Sqrt(Math.Sqrt(sign * k));
+            })
+            .ToArray();
+        _ky = _ky.Select(k =>
             {
-                result.Elements[index][0] = i + j * 2 * nx + i;
-                result.Elements[index][1] = i + 1 + 2 * j * nx + i;
-                result.Elements[index][2] = i + 2 + 2 * j * nx + i;
-                result.Elements[index][3] = i + nx + 2 * j * nx + i;
-                result.Elements[index][4] = i + nx + 1 + 2 * j * nx + i;
-                result.Elements[index][5] = i + nx + 2 + 2 * j * nx + i;
-                result.Elements[index][6] = i + 2 * nx + 2 * j * nx + i;
-                result.Elements[index][7] = i + 2 * nx + 1 + 2 * j * nx + i;
-                result.Elements[index++][8] = i + 2 * nx + 2 + 2 * j * nx + i;
-            }
-        }
-
-        return (result.Points, result.Elements);
-
-        void RecalculatePoints(Point2D v1, Point2D v2, Point2D v3, Point2D v4)
-        {
-            vertices[0] = v1;
-            vertices[1] = v2;
-            vertices[2] = v3;
-            vertices[3] = v4;
-            vertices[4] = (v1 + v2) / 2.0;
-            vertices[5] = (v3 + v4) / 2.0;
-            vertices[6] = (v1 + v3) / 2.0;
-            vertices[7] = (v4 + v2) / 2.0;
-            vertices[8] = (vertices[4] + vertices[5]) / 2.0;
-        }
+                var sign = Math.Sign(k);
+                return Nesting.Item1 == 1 ? sign * Math.Sqrt(sign * k) : sign * Math.Sqrt(Math.Sqrt(sign * k));
+            })
+            .ToArray();
     }
-}
-
-public interface IParameters
-{
-    public static abstract IParameters ReadJson(string jsonPath);
-}
-
-public readonly record struct MeshParameters
-    (Interval IntervalX, int SplitsX, Interval IntervalY, int SplitsY) : IParameters
-{
-    public static IParameters ReadJson(string jsonPath)
-    {
-        if (!File.Exists(jsonPath))
-        {
-            throw new("File does not exist");
-        }
-
-        using var sr = new StreamReader(jsonPath);
-        return JsonConvert.DeserializeObject<MeshParameters>(sr.ReadToEnd());
-    }
-}
-
-public class CurveMeshParameters : IParameters
-{
-    [JsonIgnore] public double Angle { get; }
-    public Point2D Center { get; }
-    public double Radius1 { get; }
-    public double Radius2 { get; }
-    public int Steps { get; }
-    public int Splits { get; }
-    public int? RadiiCounts { get; set; }
-
-    [JsonConstructor]
-    public CurveMeshParameters(Point2D center, double radius1, double radius2, int steps, int splits)
-    {
-        Center = center;
-        Radius1 = radius1;
-        Radius2 = radius2;
-        Steps = steps;
-        Angle = 2.0 * Math.PI / Steps;
-        Splits = splits;
-
-        if (radius1 <= 0 || radius2 <= 0 || Math.Abs(radius1 - radius2) < 1E-07)
-        {
-            throw new ArgumentException("Incorrect data in mesh parameters");
-        }
-    }
-
-    public static IParameters ReadJson(string jsonPath)
-    {
-        if (!File.Exists(jsonPath))
-        {
-            throw new("File does not exist");
-        }
-
-        using var sr = new StreamReader(jsonPath);
-        return JsonConvert.DeserializeObject<CurveMeshParameters>(sr.ReadToEnd()) ??
-               throw new NullReferenceException("Incorrect mesh parameters!");
-    }
-}
-
-public interface IBaseMesh
-{
-    IReadOnlyList<Point2D> Points { get; }
-    IReadOnlyList<IReadOnlyList<int>> Elements { get; }
-}
-
-public class RegularMesh : IBaseMesh
-{
-    private readonly List<Point2D> _points;
-    private readonly int[][] _elements;
-
-    public IReadOnlyList<Point2D> Points => _points;
-    public IReadOnlyList<IReadOnlyList<int>> Elements => _elements;
-
-    public RegularMesh(IParameters meshParameters, MeshBuilder meshBuilder)
-        => (_points, _elements) = meshBuilder.Build(meshParameters);
 }
